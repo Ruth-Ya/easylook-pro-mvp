@@ -1,7 +1,7 @@
 // src/App.jsx
 import React, { useState, useRef } from "react";
 import "./App.css";
-import logo from "./easylook-logo.png"; // <-- corrigé : logo dans src/
+import logo from "./easylook-logo.png"; // logo placé dans src/
 
 const BACKGROUNDS = [
   { id: "studio-white", label: "Fond studio blanc" },
@@ -19,7 +19,7 @@ const FORMATS = [
 ];
 
 function App() {
-  const [step, setStep] = useState("home");
+  const [step, setStep] = useState("home"); // home | processing | result | export | paywall | confirmation
   const [originalImage, setOriginalImage] = useState(null);
   const [processedImage, setProcessedImage] = useState(null);
   const [selectedBackground, setSelectedBackground] = useState("studio-white");
@@ -28,21 +28,23 @@ function App() {
 
   const fileInputRef = useRef(null);
 
+  // Simule un appel IA (détourage, fond, etc.)
   const simulateProcessing = (file) => {
     setStep("processing");
 
     const previewUrl = URL.createObjectURL(file);
     setOriginalImage(previewUrl);
 
+    // TODO: remplacer par un appel réel à ton backend / API IA
     setTimeout(() => {
-      setProcessedImage(previewUrl); 
+      setProcessedImage(previewUrl); // pour l’instant, on garde la même image
       setStep("result");
     }, 1500);
   };
 
   const handleUploadClick = () => {
     if (fileInputRef.current) {
-      fileInputRef.current.value = null;
+      fileInputRef.current.value = null; // reset
       fileInputRef.current.click();
     }
   };
@@ -51,24 +53,29 @@ function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      alert("Merci d’utiliser une image JPG ou PNG.");
+    const isImage = file.type.startsWith("image/");
+    if (!isImage) {
+      alert("Oups, merci d’utiliser une image JPG ou PNG.");
       return;
     }
     simulateProcessing(file);
   };
 
   const handleDownloadClick = () => {
+    // Essai gratuit dispo
     if (!hasFreeTrialUsed) {
       setStep("export");
       return;
     }
+    // Essai déjà utilisé → paywall
     setStep("paywall");
   };
 
   const actuallyDownloadImage = () => {
     if (!processedImage) return;
 
+    // Ici on pourrait adapter le format (square/portrait/etc.)
+    // Pour l’instant on télécharge simplement l’image traitée.
     const link = document.createElement("a");
     link.href = processedImage;
     link.download = "easylook-pro-image.jpg";
@@ -76,6 +83,7 @@ function App() {
     link.click();
     document.body.removeChild(link);
 
+    // Marque l’essai comme utilisé
     if (!hasFreeTrialUsed) {
       setHasFreeTrialUsed(true);
     }
@@ -84,23 +92,26 @@ function App() {
 
   const handleBackgroundChange = (bgId) => {
     setSelectedBackground(bgId);
+    // TODO: envoyer ce choix au backend/IA pour régénérer l’image
   };
 
   const handleFormatChange = (formatId) => {
     setSelectedFormat(formatId);
+    // TODO: appliquer un redimensionnement côté backend ou canvas
   };
 
   const handleOpenMobileMoney = () => {
-    // <-- corrigé : ton numéro réel
-    const phone = "221707546281";  
+    // Ouvre WhatsApp avec un message pré-rempli
+    const phone = "221707546281"; // Numéro EasyLook Pro (Sénégal)
     const message = encodeURIComponent(
-      "Bonjour ! Je souhaite activer mon abonnement EasyLook Pro (2 500 XOF / mois). Voici mon numéro : "
+      "Bonjour ! Je souhaite activer mon abonnement EasyLook Pro (2 500 XOF / mois). Mon numéro est : "
     );
     const url = `https://wa.me/${phone}?text=${message}`;
     window.open(url, "_blank");
   };
 
   const handleAfterPayment = () => {
+    // Pour le MVP front, on simule juste :
     setStep("confirmation");
   };
 
@@ -112,11 +123,17 @@ function App() {
     setStep("home");
   };
 
-  // --- UI ---
+  // --- Vues ---
 
   const renderHeader = () => (
     <header className="elp-header">
-      <img src={logo} alt="EasyLook Pro" className="elp-logo" />
+      <div className="elp-hero-banner">
+        <img
+          src={logo}
+          alt="EasyLook Pro – Tes photos, version studio"
+          className="elp-hero-image"
+        />
+      </div>
     </header>
   );
 
@@ -138,7 +155,9 @@ function App() {
           <p className="elp-helper">1 essai gratuit, sans inscription.</p>
         </div>
 
-        <p className="elp-footer-note">Fonctionne sur tous les téléphones.</p>
+        <p className="elp-footer-note">
+          Fonctionne sur tous les téléphones.
+        </p>
       </div>
 
       <input
@@ -167,7 +186,6 @@ function App() {
   const renderResult = () => (
     <div className="elp-screen">
       {renderHeader()}
-
       <div className="elp-content">
         <h2 className="elp-title-small">Ta photo, en version pro.</h2>
 
@@ -178,7 +196,6 @@ function App() {
               <img src={originalImage} alt="Avant" className="elp-image" />
             </div>
           )}
-
           {processedImage && (
             <div className="elp-image-block">
               <span className="elp-tag elp-tag-green">Après</span>
@@ -207,9 +224,10 @@ function App() {
 
         <div className="elp-card elp-card-actions">
           <button className="elp-button" onClick={handleDownloadClick}>
-            {hasFreeTrialUsed ? "Activer EasyLook Pro" : "Télécharger ma photo pro"}
+            {hasFreeTrialUsed
+              ? "Activer EasyLook Pro"
+              : "Télécharger ma photo pro"}
           </button>
-
           <p className="elp-helper">
             {hasFreeTrialUsed
               ? "Photos illimitées, sans filigrane."
@@ -257,7 +275,6 @@ function App() {
   const renderPaywall = () => (
     <div className="elp-screen">
       {renderHeader()}
-
       <div className="elp-content">
         <h2 className="elp-title-small">Passe en mode studio illimité.</h2>
         <p className="elp-subtitle">
@@ -278,7 +295,9 @@ function App() {
           Payer sans frais via Mobile Money
         </button>
 
-        <p className="elp-helper">Paiement sécurisé. Aucun frais supplémentaire.</p>
+        <p className="elp-helper">
+          Paiement sécurisé. Aucun frais supplémentaire.
+        </p>
 
         <button className="elp-link-button" onClick={() => setStep("result")}>
           Retour à ma photo
@@ -290,14 +309,12 @@ function App() {
   const renderConfirmation = () => (
     <div className="elp-screen">
       {renderHeader()}
-
       <div className="elp-content elp-centered">
         <h2 className="elp-title-small">Merci ! 🎉</h2>
         <p className="elp-subtitle">
           Ton abonnement EasyLook Pro est activé, ou ta photo a bien été
           téléchargée.
         </p>
-
         <button className="elp-button" onClick={resetForNewPhoto}>
           Créer une nouvelle photo
         </button>
@@ -305,6 +322,7 @@ function App() {
     </div>
   );
 
+  // Choix de l’écran
   let content;
   switch (step) {
     case "home":
