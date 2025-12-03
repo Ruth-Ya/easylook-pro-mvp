@@ -1,7 +1,7 @@
 // src/App.jsx
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import "./App.css";
-import logo from "./easylook-logo.png";
+import logo from "./easylook-logo.png"; // logo placé dans src/
 
 const BACKGROUNDS = [
   { id: "studio-white", label: "Fond studio blanc" },
@@ -18,34 +18,15 @@ const FORMATS = [
   { id: "whatsapp", label: "WhatsApp optimisé (léger)" },
 ];
 
-// ➜ textes du bandeau slider
-const SLIDES = [
-  "Détourage automatique & fonds studio propres",
-  "Pensé pour WhatsApp, Instagram & e-commerce",
-  "Paiement Mobile Money, 100% local"
-];
-
 function App() {
-  // home | processing | result | export | paywall | confirmation
-  const [step, setStep] = useState("home");
+  const [step, setStep] = useState("home"); // home | processing | result | export | paywall | confirmation
   const [originalImage, setOriginalImage] = useState(null);
   const [processedImage, setProcessedImage] = useState(null);
   const [selectedBackground, setSelectedBackground] = useState("studio-white");
   const [selectedFormat, setSelectedFormat] = useState("square");
   const [hasFreeTrialUsed, setHasFreeTrialUsed] = useState(false);
 
-  // slider bandeau
-  const [currentSlide, setCurrentSlide] = useState(0);
-
   const fileInputRef = useRef(null);
-
-  // rotation automatique du slider
-  useEffect(() => {
-    const id = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % SLIDES.length);
-    }, 3500);
-    return () => clearInterval(id);
-  }, []);
 
   // Simule un appel IA (détourage, fond, etc.)
   const simulateProcessing = (file) => {
@@ -93,6 +74,8 @@ function App() {
   const actuallyDownloadImage = () => {
     if (!processedImage) return;
 
+    // Ici on pourrait adapter le format (square/portrait/etc.)
+    // Pour l’instant on télécharge simplement l’image traitée.
     const link = document.createElement("a");
     link.href = processedImage;
     link.download = "easylook-pro-image.jpg";
@@ -100,6 +83,7 @@ function App() {
     link.click();
     document.body.removeChild(link);
 
+    // Marque l’essai comme utilisé
     if (!hasFreeTrialUsed) {
       setHasFreeTrialUsed(true);
     }
@@ -118,7 +102,7 @@ function App() {
 
   const handleOpenMobileMoney = () => {
     // Ouvre WhatsApp avec un message pré-rempli
-    const phone = "221707546281"; // EasyLook Pro
+    const phone = "221707546281"; // Numéro EasyLook Pro (Sénégal)
     const message = encodeURIComponent(
       "Bonjour ! Je souhaite activer mon abonnement EasyLook Pro (2 500 XOF / mois). Mon numéro est : "
     );
@@ -127,7 +111,7 @@ function App() {
   };
 
   const handleAfterPayment = () => {
-    // pour plus tard : callback après activation réelle
+    // Pour le MVP front, on simule juste :
     setStep("confirmation");
   };
 
@@ -143,61 +127,19 @@ function App() {
 
   const renderHeader = () => (
     <header className="elp-header">
-      <img src={logo} alt="EasyLook Pro" className="elp-logo" />
+      <div className="elp-hero-banner">
+        <img
+          src={logo}
+          alt="EasyLook Pro – Tes photos, version studio"
+          className="elp-hero-image"
+        />
+      </div>
     </header>
   );
 
   const renderHome = () => (
     <div className="elp-screen">
       {renderHeader()}
-
-      {/* HERO : bandeau slider + mockup téléphone */}
-      <div className="elp-hero-top">
-        <div className="elp-hero-banner">
-          <span className="elp-hero-label">EasyLook Pro</span>
-          <div className="elp-hero-slider">
-            <span key={currentSlide} className="elp-hero-pill">
-              {SLIDES[currentSlide]}
-            </span>
-          </div>
-        </div>
-
-        <div className="elp-hero-phone">
-          <div className="elp-phone-frame">
-            <div className="elp-phone-notch" />
-            <div className="elp-phone-screen">
-              <div className="elp-phone-badge">Bêta privée – Sénégal</div>
-
-              <div className="elp-phone-block-row">
-                <div className="elp-phone-block elp-phone-block-light">
-                  <span className="elp-phone-label">Avant</span>
-                  <div className="elp-phone-thumb" />
-                </div>
-                <div className="elp-phone-block elp-phone-block-strong">
-                  <span className="elp-phone-label">Après (studio)</span>
-                  <div className="elp-phone-thumb" />
-                </div>
-              </div>
-
-              <div className="elp-phone-bars">
-                <div className="elp-phone-bar" />
-                <div className="elp-phone-bar elp-phone-bar-short" />
-              </div>
-
-              <div className="elp-phone-cta-row">
-                <div className="elp-phone-cta" />
-                <div className="elp-phone-dot-row">
-                  <span className="elp-phone-dot" />
-                  <span className="elp-phone-dot" />
-                  <span className="elp-phone-dot" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Contenu principal */}
       <div className="elp-content">
         <h1 className="elp-title">Tes photos, version studio.</h1>
         <p className="elp-subtitle">
@@ -213,7 +155,9 @@ function App() {
           <p className="elp-helper">1 essai gratuit, sans inscription.</p>
         </div>
 
-        <p className="elp-footer-note">Fonctionne sur tous les téléphones.</p>
+        <p className="elp-footer-note">
+          Fonctionne sur tous les téléphones.
+        </p>
       </div>
 
       <input
@@ -407,3 +351,5 @@ function App() {
 }
 
 export default App;
+
+
