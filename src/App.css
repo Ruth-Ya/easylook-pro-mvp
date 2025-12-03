@@ -50,7 +50,7 @@ body {
   }
 }
 
-/* Header / logo */
+/* Header / logo (structure) */
 
 .elp-header {
   display: flex;
@@ -58,6 +58,7 @@ body {
   margin-bottom: 20px;
 }
 
+/* Optionnel : si un petit logo est utilisé ailleurs */
 .elp-logo {
   height: 40px;
   object-fit: contain;
@@ -283,38 +284,34 @@ body {
   }
 }
 
-/* Bandeau visuel en haut */
-
-.elp-header {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 20px;
-}
+/* Bandeau visuel en haut (version "SaaS" plus légère) */
 
 .elp-hero-banner {
   width: 100%;
-  max-width: 640px;
-  border-radius: 24px;
-  overflow: hidden;
-  padding: 16px 20px;
-  box-sizing: border-box;
-  background: radial-gradient(circle at top left, #ffe5c0 0, #f7d9b0 35%, #f8f5f2 95%);
+  max-width: 520px;
+  padding: 16px 0;
+  border-radius: 0 0 24px 24px;
+  background: linear-gradient(180deg, #ffe3bd 0%, #f8f5f2 95%);
   display: flex;
   justify-content: center;
   align-items: center;
+  margin: 0 auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .elp-hero-image {
-  width: 100%;
-  max-width: 420px;
+  width: 180px;
   height: auto;
   display: block;
+  opacity: 0.96;
 }
 
-@media (max-width: 480px) {
+@media (min-width: 900px) {
   .elp-hero-banner {
-    padding: 12px 14px;
-    border-radius: 18px;
+    max-width: 560px;
+    padding: 18px 0;
+  }
+  .elp-hero-image {
+    width: 220px;
   }
 }
-
