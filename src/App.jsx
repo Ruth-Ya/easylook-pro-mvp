@@ -1,281 +1,335 @@
-import { useState } from "react";
+// src/App.jsx
+import React, { useState, useRef } from "react";
 import "./App.css";
-import easylookLogo from "./easylook-logo.png";
+import logo from "./easylook-logo.png"; // <-- corrigé : logo dans src/
 
-function formatSize(bytes) {
-  if (!bytes && bytes !== 0) return "";
-  if (bytes < 1024) return bytes + " o";
-  const kb = bytes / 1024;
-  if (kb < 1024) return kb.toFixed(1) + " Ko";
-  const mb = kb / 1024;
-  return mb.toFixed(1) + " Mo";
-}
+const BACKGROUNDS = [
+  { id: "studio-white", label: "Fond studio blanc" },
+  { id: "neutral-grey", label: "Fond neutre gris" },
+  { id: "textile-soft", label: "Fond textile soft" },
+  { id: "terracotta", label: "Fond terracotta" },
+  { id: "deep-green", label: "Fond vert profond" },
+];
 
-export default function App() {
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
+const FORMATS = [
+  { id: "square", label: "Carré 1080×1080 (Recommandé)" },
+  { id: "portrait", label: "Portrait 1080×1350" },
+  { id: "landscape", label: "Paysage 1200×628" },
+  { id: "whatsapp", label: "WhatsApp optimisé (léger)" },
+];
 
-  const handleFileChange = (event) => {
-    const f = event.target.files?.[0];
-    if (!f) return;
-    setFile(f);
-    setIsProcessing(true);
-    const url = URL.createObjectURL(f);
-    setPreviewUrl(url);
-    // simulation d'un traitement rapide (< 1 min)
+function App() {
+  const [step, setStep] = useState("home");
+  const [originalImage, setOriginalImage] = useState(null);
+  const [processedImage, setProcessedImage] = useState(null);
+  const [selectedBackground, setSelectedBackground] = useState("studio-white");
+  const [selectedFormat, setSelectedFormat] = useState("square");
+  const [hasFreeTrialUsed, setHasFreeTrialUsed] = useState(false);
+
+  const fileInputRef = useRef(null);
+
+  const simulateProcessing = (file) => {
+    setStep("processing");
+
+    const previewUrl = URL.createObjectURL(file);
+    setOriginalImage(previewUrl);
+
     setTimeout(() => {
-      setIsProcessing(false);
-    }, 800);
+      setProcessedImage(previewUrl); 
+      setStep("result");
+    }, 1500);
   };
 
-  const handleDrop = (event) => {
-    event.preventDefault();
-    const f = event.dataTransfer.files?.[0];
-    if (!f) return;
-    const fakeInput = { target: { files: [f] } };
-    handleFileChange(fakeInput);
+  const handleUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = null;
+      fileInputRef.current.click();
+    }
   };
 
-  const handleDragOver = (event) => {
-    event.preventDefault();
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Merci d’utiliser une image JPG ou PNG.");
+      return;
+    }
+    simulateProcessing(file);
   };
 
-  return (
-    <div className="app-shell">
-      {/* HEADER */}
-      <header className="app-header">
-        <div className="brand-mark">
-          <div className="brand-logo">
-            <img src={easylookLogo} alt="Logo EasyLook Pro" />
-          </div>
-          <div className="brand-text">
-            <span className="brand-name">EasyLook Pro</span>
-            <span className="brand-tagline">Tes photos, version studio</span>
-          </div>
+  const handleDownloadClick = () => {
+    if (!hasFreeTrialUsed) {
+      setStep("export");
+      return;
+    }
+    setStep("paywall");
+  };
+
+  const actuallyDownloadImage = () => {
+    if (!processedImage) return;
+
+    const link = document.createElement("a");
+    link.href = processedImage;
+    link.download = "easylook-pro-image.jpg";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    if (!hasFreeTrialUsed) {
+      setHasFreeTrialUsed(true);
+    }
+    setStep("confirmation");
+  };
+
+  const handleBackgroundChange = (bgId) => {
+    setSelectedBackground(bgId);
+  };
+
+  const handleFormatChange = (formatId) => {
+    setSelectedFormat(formatId);
+  };
+
+  const handleOpenMobileMoney = () => {
+    // <-- corrigé : ton numéro réel
+    const phone = "221707546281";  
+    const message = encodeURIComponent(
+      "Bonjour ! Je souhaite activer mon abonnement EasyLook Pro (2 500 XOF / mois). Voici mon numéro : "
+    );
+    const url = `https://wa.me/${phone}?text=${message}`;
+    window.open(url, "_blank");
+  };
+
+  const handleAfterPayment = () => {
+    setStep("confirmation");
+  };
+
+  const resetForNewPhoto = () => {
+    setOriginalImage(null);
+    setProcessedImage(null);
+    setSelectedBackground("studio-white");
+    setSelectedFormat("square");
+    setStep("home");
+  };
+
+  // --- UI ---
+
+  const renderHeader = () => (
+    <header className="elp-header">
+      <img src={logo} alt="EasyLook Pro" className="elp-logo" />
+    </header>
+  );
+
+  const renderHome = () => (
+    <div className="elp-screen">
+      {renderHeader()}
+      <div className="elp-content">
+        <h1 className="elp-title">Tes photos, version studio.</h1>
+        <p className="elp-subtitle">
+          Transforme tes photos produits en visuels qualité studio,
+          en moins de 60 secondes. Idéal pour WhatsApp, Instagram,
+          e-commerce et tous tes réseaux.
+        </p>
+
+        <div className="elp-card elp-card-centered">
+          <button className="elp-button" onClick={handleUploadClick}>
+            Améliorer ma photo
+          </button>
+          <p className="elp-helper">1 essai gratuit, sans inscription.</p>
         </div>
-        <div className="badge-beta">
-          <span className="badge-dot" />
-          Bêta privée – Sénégal
-        </div>
-      </header>
 
-      <main className="app-main">
-        {/* HERO + UPLOAD */}
-        <section className="hero-card">
-          <div className="hero-text">
-            <h1>Qualité studio, en moins de 60 secondes.</h1>
-            <p>
-              Transforme tes photos produits en visuels propres pour WhatsApp,
-              Instagram, Facebook et les boutiques en ligne. Paiement local,
-              100% Mobile Money.
-            </p>
+        <p className="elp-footer-note">Fonctionne sur tous les téléphones.</p>
+      </div>
 
-            <div className="hero-pills">
-              <div className="pill">
-                <strong>Qualité pro</strong>
-                <span>Détourage & fonds propres</span>
-              </div>
-              <div className="pill">
-                <strong>Ultra rapide</strong>
-                <span>&lt; 60 sec / photo</span>
-              </div>
-              <div className="pill">
-                <strong>Payer sans frais</strong>
-                <span>Mobile Money (XOF)</span>
-              </div>
-            </div>
-
-            {/* Export multi-formats */}
-            <p
-              style={{
-                fontSize: 13,
-                color: "#6b7280",
-                marginTop: 10,
-              }}
-            >
-              Exports optimisés pour WhatsApp, Instagram, Facebook et les
-              plateformes e-commerce (Jumia, Shopify, WooCommerce, etc.).
-            </p>
-
-            {/* Cibles */}
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "6px",
-                marginTop: 10,
-                fontSize: 12,
-              }}
-            >
-              {[
-                "Stylistes & créateurs",
-                "Artisans & designers",
-                "Revendeurs en ligne",
-                "Agro-business",
-                "Petits e-commerçants",
-              ].map((label) => (
-                <span
-                  key={label}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    background: "#eef2ff",
-                    color: "#4338ca",
-                    fontWeight: 500,
-                  }}
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="upload-card">
-            <div className="upload-title">
-              Teste EasyLook Pro gratuitement
-            </div>
-            <div className="upload-sub">
-              Charge une photo produit et visualise le rendu “version studio”.
-              (Démo : l’IA n’est pas encore connectée.)
-            </div>
-
-            <div
-              className="dropzone"
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-            >
-              <div className="drop-left">
-                <div className="drop-icon">⬆️</div>
-                <div className="drop-text">
-                  <strong>Glisse-dépose ou sélectionne une image</strong>
-                  <span>Format JPG ou PNG, max 10 Mo</span>
-                </div>
-              </div>
-              <div className="drop-cta">
-                <label>
-                  <button type="button">Choisir un fichier</button>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={handleFileChange}
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="status-row">
-              <span>
-                {file ? (
-                  <>
-                    <strong>{file.name}</strong> · {formatSize(file.size)}
-                  </>
-                ) : (
-                  "Aucun fichier sélectionné pour le moment"
-                )}
-              </span>
-              <span>
-                {isProcessing
-                  ? "Traitement en cours..."
-                  : file
-                  ? "Traitement terminé (démonstration)"
-                  : ""}
-              </span>
-            </div>
-
-            <div className="preview-grid">
-              <div className="preview-card">
-                <div className="preview-label">
-                  <span>Original</span>
-                </div>
-                <div className="preview-box">
-                  {previewUrl ? (
-                    <img
-                      src={previewUrl}
-                      alt="Original"
-                      className="preview-img"
-                    />
-                  ) : (
-                    "Charge une photo pour prévisualiser"
-                  )}
-                </div>
-              </div>
-              <div className="preview-card">
-                <div className="preview-label">
-                  <span>Version studio (démo)</span>
-                  <span style={{ fontSize: 10, color: "#9ca3af" }}>
-                    IA non activée – aperçu mock
-                  </span>
-                </div>
-                <div className="preview-box">
-                  {previewUrl ? (
-                    <img
-                      src={previewUrl}
-                      alt="Version studio"
-                      className="preview-img"
-                    />
-                  ) : (
-                    "Ici apparaîtra le rendu EasyLook Pro"
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="footer-hint">
-              <span>
-                <strong>Prochaine étape :</strong> activer les modèles IA
-                (détourage, fonds optimisés mode & artisanat).
-              </span>
-              <span>
-                Exports prévus : WhatsApp, Instagram, Facebook et fichiers HD
-                pour marketplaces.
-              </span>
-              <span>
-                Payer sans frais via Mobile Money – abonnement mensuel ou packs
-                de crédits.
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* BANDEAU WHATSAPP */}
-        <section
-          style={{
-            maxWidth: 1120,
-            margin: "16px auto 0",
-            padding: "10px 16px",
-            borderRadius: 999,
-            background: "#f3f4f6",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "8px",
-            alignItems: "center",
-            justifyContent: "space-between",
-            fontSize: 14,
-          }}
-        >
-          <span>
-            Besoin d’une démo, d’un devis ou d’un retour sur EasyLook Pro ?
-          </span>
-          <a
-            href="https://wa.me/221707546281"
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              background: "#22c55e",
-              color: "#fff",
-              fontWeight: 600,
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Écrire sur WhatsApp (+221 70 754 62 81)
-          </a>
-        </section>
-      </main>
+      <input
+        type="file"
+        accept="image/*"
+        ref={fileInputRef}
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
     </div>
   );
+
+  const renderProcessing = () => (
+    <div className="elp-screen">
+      {renderHeader()}
+      <div className="elp-content elp-centered">
+        <div className="elp-loader" />
+        <h2 className="elp-title-small">On prépare ta version studio…</h2>
+        <p className="elp-subtitle">
+          Ça prend moins de 60 secondes. Tu peux poser ton téléphone 😉
+        </p>
+      </div>
+    </div>
+  );
+
+  const renderResult = () => (
+    <div className="elp-screen">
+      {renderHeader()}
+
+      <div className="elp-content">
+        <h2 className="elp-title-small">Ta photo, en version pro.</h2>
+
+        <div className="elp-compare">
+          {originalImage && (
+            <div className="elp-image-block">
+              <span className="elp-tag">Avant</span>
+              <img src={originalImage} alt="Avant" className="elp-image" />
+            </div>
+          )}
+
+          {processedImage && (
+            <div className="elp-image-block">
+              <span className="elp-tag elp-tag-green">Après</span>
+              <img src={processedImage} alt="Après" className="elp-image" />
+            </div>
+          )}
+        </div>
+
+        <p className="elp-subtitle">
+          Choisis le fond qui met le mieux ton produit en valeur.
+        </p>
+
+        <div className="elp-background-list">
+          {BACKGROUNDS.map((bg) => (
+            <button
+              key={bg.id}
+              className={`elp-chip ${
+                selectedBackground === bg.id ? "elp-chip-active" : ""
+              }`}
+              onClick={() => handleBackgroundChange(bg.id)}
+            >
+              {bg.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="elp-card elp-card-actions">
+          <button className="elp-button" onClick={handleDownloadClick}>
+            {hasFreeTrialUsed ? "Activer EasyLook Pro" : "Télécharger ma photo pro"}
+          </button>
+
+          <p className="elp-helper">
+            {hasFreeTrialUsed
+              ? "Photos illimitées, sans filigrane."
+              : "Cet essai est offert 🎁"}
+          </p>
+
+          <button className="elp-link-button" onClick={resetForNewPhoto}>
+            Reprendre une nouvelle photo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderExport = () => (
+    <div className="elp-screen">
+      {renderHeader()}
+      <div className="elp-content">
+        <h2 className="elp-title-small">Choisis ton format d’export</h2>
+        <div className="elp-card">
+          {FORMATS.map((f) => (
+            <label key={f.id} className="elp-radio-row">
+              <input
+                type="radio"
+                name="export-format"
+                value={f.id}
+                checked={selectedFormat === f.id}
+                onChange={() => handleFormatChange(f.id)}
+              />
+              <span>{f.label}</span>
+            </label>
+          ))}
+        </div>
+
+        <button className="elp-button" onClick={actuallyDownloadImage}>
+          Télécharger
+        </button>
+        <button className="elp-link-button" onClick={() => setStep("result")}>
+          Retour
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderPaywall = () => (
+    <div className="elp-screen">
+      {renderHeader()}
+
+      <div className="elp-content">
+        <h2 className="elp-title-small">Passe en mode studio illimité.</h2>
+        <p className="elp-subtitle">
+          Pour seulement <strong>2 500 XOF / mois</strong>.
+        </p>
+
+        <div className="elp-card">
+          <ul className="elp-list">
+            <li>Détourage automatique</li>
+            <li>10 fonds studio optimisés mode & artisanat</li>
+            <li>Export multi-formats (WhatsApp, e-commerce, réseaux)</li>
+            <li>Résultats en moins de 60 secondes</li>
+            <li>Payer sans frais via Mobile Money</li>
+          </ul>
+        </div>
+
+        <button className="elp-button" onClick={handleOpenMobileMoney}>
+          Payer sans frais via Mobile Money
+        </button>
+
+        <p className="elp-helper">Paiement sécurisé. Aucun frais supplémentaire.</p>
+
+        <button className="elp-link-button" onClick={() => setStep("result")}>
+          Retour à ma photo
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderConfirmation = () => (
+    <div className="elp-screen">
+      {renderHeader()}
+
+      <div className="elp-content elp-centered">
+        <h2 className="elp-title-small">Merci ! 🎉</h2>
+        <p className="elp-subtitle">
+          Ton abonnement EasyLook Pro est activé, ou ta photo a bien été
+          téléchargée.
+        </p>
+
+        <button className="elp-button" onClick={resetForNewPhoto}>
+          Créer une nouvelle photo
+        </button>
+      </div>
+    </div>
+  );
+
+  let content;
+  switch (step) {
+    case "home":
+      content = renderHome();
+      break;
+    case "processing":
+      content = renderProcessing();
+      break;
+    case "result":
+      content = renderResult();
+      break;
+    case "export":
+      content = renderExport();
+      break;
+    case "paywall":
+      content = renderPaywall();
+      break;
+    case "confirmation":
+      content = renderConfirmation();
+      break;
+    default:
+      content = renderHome();
+  }
+
+  return <div className="elp-app">{content}</div>;
 }
+
+export default App;
