@@ -17,37 +17,66 @@ body {
   color: var(--elp-text);
 }
 
+/* Conteneur général */
+
 .elp-app {
   min-height: 100vh;
   display: flex;
   justify-content: center;
+  align-items: stretch;
 }
+
+/* Écran principal */
 
 .elp-screen {
   width: 100%;
-  max-width: 480px;
-  padding: 16px 16px 32px;
+  max-width: 520px;
+  padding: 24px 16px 32px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
 }
 
+/* Sur desktop : petite carte centrée */
+
+@media (min-width: 900px) {
+  .elp-screen {
+    max-width: 760px;
+    padding: 40px 48px 48px;
+    margin: 40px 0;
+    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.06);
+  }
+}
+
+/* Header / logo */
+
 .elp-header {
   display: flex;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .elp-logo {
-  height: 36px;
+  height: 40px;
   object-fit: contain;
 }
+
+@media (min-width: 900px) {
+  .elp-logo {
+    height: 52px;
+  }
+}
+
+/* Contenu texte */
 
 .elp-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+  text-align: center;
 }
 
 .elp-centered {
@@ -56,28 +85,31 @@ body {
 }
 
 .elp-title {
-  font-size: 1.6rem;
+  font-size: 1.8rem;
   font-weight: 700;
   margin: 0;
 }
 
 .elp-title-small {
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   font-weight: 600;
   margin: 0;
 }
 
 .elp-subtitle {
-  font-size: 0.95rem;
-  line-height: 1.5;
-  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.6;
+  margin: 0 auto;
   color: #555555;
+  max-width: 36rem;
 }
+
+/* Cartes */
 
 .elp-card {
   background: #ffffff;
   border-radius: var(--elp-radius);
-  padding: 16px;
+  padding: 18px 16px;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
 }
 
@@ -92,20 +124,25 @@ body {
   text-align: center;
 }
 
+/* Boutons */
+
 .elp-button {
   width: 100%;
   border: none;
   border-radius: 999px;
-  padding: 12px 16px;
+  padding: 13px 18px;
   font-size: 1rem;
   font-weight: 600;
   background: var(--elp-cta);
   color: #ffffff;
   cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, opacity 0.15s ease;
 }
 
 .elp-button:hover {
-  opacity: 0.95;
+  opacity: 0.97;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.09);
 }
 
 .elp-link-button {
@@ -125,6 +162,8 @@ body {
   margin-top: 8px;
 }
 
+/* Bas de page */
+
 .elp-footer-note {
   font-size: 0.8rem;
   color: #888888;
@@ -133,6 +172,7 @@ body {
 }
 
 /* Loader */
+
 .elp-loader {
   width: 40px;
   height: 40px;
@@ -232,14 +272,13 @@ body {
   margin-bottom: 8px;
 }
 
-/* Responsive desktop léger */
+/* Responsive desktop : titres un peu plus grands */
 
-@media (min-width: 768px) {
-  .elp-screen {
-    margin-top: 24px;
-    margin-bottom: 24px;
-  }
+@media (min-width: 900px) {
   .elp-title {
-    font-size: 2rem;
+    font-size: 2.1rem;
+  }
+  .elp-title-small {
+    font-size: 1.6rem;
   }
 }
