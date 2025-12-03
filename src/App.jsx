@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./App.css";
+import logo from "./easylook-logo.png";
 
 function formatSize(bytes) {
   if (!bytes && bytes !== 0) return "";
@@ -44,7 +45,9 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div className="brand-mark">
-          <div className="brand-logo">EL</div>
+          <div className="brand-logo">
+            <img src={logo} alt="EasyLook Pro" />
+          </div>
           <div className="brand-text">
             <span className="brand-name">EasyLook Pro</span>
             <span className="brand-tagline">Tes photos, version studio</span>
@@ -175,7 +178,9 @@ export default function App() {
                 <strong>Prochaine étape :</strong> activer les modèles IA
                 (détourage, fonds optimisés mode & artisanat).
               </span>
-              <span>Payer sans frais via Mobile Money – Abonnement ou crédits.</span>
+              <span>
+                Payer sans frais via Mobile Money – Abonnement ou crédits.
+              </span>
             </div>
           </div>
         </section>
