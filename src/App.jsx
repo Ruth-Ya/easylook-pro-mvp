@@ -1,7 +1,28 @@
 // src/App.jsx
-import React, { useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import logo from "./easylook-logo.png"; // logo placé dans src/
+
+const STORAGE_KEY_CREDITS = "elp_credits_v1";
+const FREE_CREDITS_START = 3;
+
+const SEGMENTS = [
+  {
+    id: "mode",
+    label: "Mode & Artisanat",
+    desc: "Bazin, wax, accessoires, bijoux…",
+  },
+  {
+    id: "agro",
+    label: "Agro & Produits locaux",
+    desc: "Bissap, miel, huiles, épices…",
+  },
+  {
+    id: "ecommerce",
+    label: "E-commerce & Catalogues",
+    desc: "Produits variés, marketplace, ventes…",
+  },
+];
 
 const BACKGROUNDS = [
   { id: "studio-white", label: "Fond studio blanc" },
@@ -18,15 +39,53 @@ const FORMATS = [
   { id: "whatsapp", label: "WhatsApp optimisé (léger)" },
 ];
 
+function readCreditsFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CREDITS);
+    if (raw === null || raw === undefined || raw === "") return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.floor(n);
+  } catch {
+    return null;
+  }
+}
+
+function writeCreditsToStorage(n) {
+  try {
+    localStorage.setItem(STORAGE_KEY_CREDITS, String(Math.max(0, Math.floor(n))));
+  } catch {
+    // ignore
+  }
+}
+
 function App() {
   const [step, setStep] = useState("home"); // home | processing | result | export | paywall | confirmation
+  const [segment, setSegment] = useState("mode");
+  const [credits, setCredits] = useState(FREE_CREDITS_START);
+
   const [originalImage, setOriginalImage] = useState(null);
   const [processedImage, setProcessedImage] = useState(null);
   const [selectedBackground, setSelectedBackground] = useState("studio-white");
   const [selectedFormat, setSelectedFormat] = useState("square");
-  const [hasFreeTrialUsed, setHasFreeTrialUsed] = useState(false);
 
   const fileInputRef = useRef(null);
+
+  // Initialisation des crédits (3 au départ) + persistance
+  useEffect(() => {
+    const stored = readCreditsFromStorage();
+    if (stored === null) {
+      writeCreditsToStorage(FREE_CREDITS_START);
+      setCredits(FREE_CREDITS_START);
+    } else {
+      setCredits(stored);
+    }
+  }, []);
+
+  // Helper segment
+  const segmentLabel = useMemo(() => {
+    return SEGMENTS.find((s) => s.id === segment)?.label ?? "Mode & Artisanat";
+  }, [segment]);
 
   // Simule un appel IA (détourage, fond, etc.)
   const simulateProcessing = (file) => {
@@ -62,31 +121,35 @@ function App() {
   };
 
   const handleDownloadClick = () => {
-    // Essai gratuit dispo
-    if (!hasFreeTrialUsed) {
+    // Si crédits dispo => export
+    if (credits > 0) {
       setStep("export");
       return;
     }
-    // Essai déjà utilisé → paywall
+    // Sinon paywall
     setStep("paywall");
+  };
+
+  const consumeOneCredit = () => {
+    const next = Math.max(0, (credits ?? 0) - 1);
+    setCredits(next);
+    writeCreditsToStorage(next);
   };
 
   const actuallyDownloadImage = () => {
     if (!processedImage) return;
 
-    // Ici on pourrait adapter le format (square/portrait/etc.)
-    // Pour l’instant on télécharge simplement l’image traitée.
+    // Téléchargement (MVP)
     const link = document.createElement("a");
     link.href = processedImage;
-    link.download = "easylook-pro-image.jpg";
+    link.download = `easylook-pro-${selectedFormat}.jpg`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    // Marque l’essai comme utilisé
-    if (!hasFreeTrialUsed) {
-      setHasFreeTrialUsed(true);
-    }
+    // Consomme 1 crédit
+    consumeOneCredit();
+
     setStep("confirmation");
   };
 
@@ -104,15 +167,14 @@ function App() {
     // Ouvre WhatsApp avec un message pré-rempli
     const phone = "221707546281"; // Numéro EasyLook Pro (Sénégal)
     const message = encodeURIComponent(
-      "Bonjour ! Je souhaite activer mon abonnement EasyLook Pro (2 500 XOF / mois). Mon numéro est : "
+      `Bonjour ! Je souhaite activer EasyLook Pro (2 500 XOF / mois).\n` +
+        `Segment : ${segmentLabel}\n` +
+        `Crédits restants : ${credits}\n` +
+        `Merci de m’indiquer la procédure Mobile Money.\n` +
+        `Mon numéro est : `
     );
     const url = `https://wa.me/${phone}?text=${message}`;
     window.open(url, "_blank");
-  };
-
-  const handleAfterPayment = () => {
-    // Pour le MVP front, on simule juste :
-    setStep("confirmation");
   };
 
   const resetForNewPhoto = () => {
@@ -137,27 +199,100 @@ function App() {
     </header>
   );
 
+  const renderCreditsPill = () => (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        justifyContent: "center",
+        fontSize: 12,
+        color: "#555",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "6px 10px",
+          borderRadius: 999,
+          background: "#fff",
+          border: "1px solid rgba(0,0,0,0.08)",
+          boxShadow: "0 6px 18px rgba(0,0,0,0.04)",
+        }}
+      >
+        <span style={{ fontWeight: 700 }}>{credits}</span>
+        <span>crédit{credits === 1 ? "" : "s"} gratuit{credits === 1 ? "" : "s"}</span>
+      </span>
+    </div>
+  );
+
+  const renderSegmentPicker = () => (
+    <div className="elp-card" style={{ textAlign: "left" }}>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>Choisis ton segment</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {SEGMENTS.map((s) => (
+          <label
+            key={s.id}
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "flex-start",
+              padding: "10px 10px",
+              borderRadius: 12,
+              border:
+                segment === s.id
+                  ? "1px solid rgba(199,139,58,0.55)"
+                  : "1px solid rgba(0,0,0,0.08)",
+              background: segment === s.id ? "rgba(199,139,58,0.08)" : "#fff",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="radio"
+              name="segment"
+              value={s.id}
+              checked={segment === s.id}
+              onChange={() => setSegment(s.id)}
+              style={{ marginTop: 3 }}
+            />
+            <div>
+              <div style={{ fontWeight: 700 }}>{s.label}</div>
+              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{s.desc}</div>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
   const renderHome = () => (
     <div className="elp-screen">
       {renderHeader()}
       <div className="elp-content">
+        {renderCreditsPill()}
+
         <h1 className="elp-title">Tes photos, version studio.</h1>
         <p className="elp-subtitle">
-          Transforme tes photos produits en visuels qualité studio,
-          en moins de 60 secondes. Idéal pour WhatsApp, Instagram,
-          e-commerce et tous tes réseaux.
+          Transforme tes photos produits en visuels qualité studio, en moins de 60 secondes.
+          Idéal pour WhatsApp, Instagram, e-commerce et tous tes réseaux.
         </p>
+
+        {renderSegmentPicker()}
 
         <div className="elp-card elp-card-centered">
           <button className="elp-button" onClick={handleUploadClick}>
             Améliorer ma photo
           </button>
-          <p className="elp-helper">1 essai gratuit, sans inscription.</p>
+          <p className="elp-helper">
+            {credits > 0
+              ? `${credits} crédit${credits === 1 ? "" : "s"} gratuit${credits === 1 ? "" : "s"} restant${credits === 1 ? "" : "s"}.`
+              : "Crédits épuisés : passe en illimité."}
+          </p>
         </div>
 
-        <p className="elp-footer-note">
-          Fonctionne sur tous les téléphones.
-        </p>
+        <p className="elp-footer-note">Fonctionne sur tous les téléphones.</p>
       </div>
 
       <input
@@ -187,6 +322,8 @@ function App() {
     <div className="elp-screen">
       {renderHeader()}
       <div className="elp-content">
+        {renderCreditsPill()}
+
         <h2 className="elp-title-small">Ta photo, en version pro.</h2>
 
         <div className="elp-compare">
@@ -205,16 +342,14 @@ function App() {
         </div>
 
         <p className="elp-subtitle">
-          Choisis le fond qui met le mieux ton produit en valeur.
+          Segment : <strong>{segmentLabel}</strong> — Choisis le fond qui met le mieux ton produit en valeur.
         </p>
 
         <div className="elp-background-list">
           {BACKGROUNDS.map((bg) => (
             <button
               key={bg.id}
-              className={`elp-chip ${
-                selectedBackground === bg.id ? "elp-chip-active" : ""
-              }`}
+              className={`elp-chip ${selectedBackground === bg.id ? "elp-chip-active" : ""}`}
               onClick={() => handleBackgroundChange(bg.id)}
             >
               {bg.label}
@@ -224,14 +359,13 @@ function App() {
 
         <div className="elp-card elp-card-actions">
           <button className="elp-button" onClick={handleDownloadClick}>
-            {hasFreeTrialUsed
-              ? "Activer EasyLook Pro"
-              : "Télécharger ma photo pro"}
+            {credits > 0 ? "Télécharger (1 crédit)" : "Activer EasyLook Pro"}
           </button>
+
           <p className="elp-helper">
-            {hasFreeTrialUsed
-              ? "Photos illimitées, sans filigrane."
-              : "Cet essai est offert 🎁"}
+            {credits > 0
+              ? "Le téléchargement consomme 1 crédit."
+              : "Crédits épuisés : passe en illimité."}
           </p>
 
           <button className="elp-link-button" onClick={resetForNewPhoto}>
@@ -246,6 +380,8 @@ function App() {
     <div className="elp-screen">
       {renderHeader()}
       <div className="elp-content">
+        {renderCreditsPill()}
+
         <h2 className="elp-title-small">Choisis ton format d’export</h2>
         <div className="elp-card">
           {FORMATS.map((f) => (
@@ -262,9 +398,19 @@ function App() {
           ))}
         </div>
 
-        <button className="elp-button" onClick={actuallyDownloadImage}>
-          Télécharger
+        <button
+          className="elp-button"
+          onClick={() => {
+            if (credits <= 0) {
+              setStep("paywall");
+              return;
+            }
+            actuallyDownloadImage();
+          }}
+        >
+          Télécharger (1 crédit)
         </button>
+
         <button className="elp-link-button" onClick={() => setStep("result")}>
           Retour
         </button>
@@ -278,7 +424,8 @@ function App() {
       <div className="elp-content">
         <h2 className="elp-title-small">Passe en mode studio illimité.</h2>
         <p className="elp-subtitle">
-          Pour seulement <strong>2 500 XOF / mois</strong>.
+          Tu as utilisé tes <strong>{FREE_CREDITS_START} crédits gratuits</strong>.
+          Active EasyLook Pro pour continuer, pour seulement <strong>2 500 XOF / mois</strong>.
         </p>
 
         <div className="elp-card">
@@ -287,17 +434,15 @@ function App() {
             <li>10 fonds studio optimisés mode & artisanat</li>
             <li>Export multi-formats (WhatsApp, e-commerce, réseaux)</li>
             <li>Résultats en moins de 60 secondes</li>
-            <li>Payer sans frais via Mobile Money</li>
+            <li>Payer sans frais via Mobile Money (WhatsApp)</li>
           </ul>
         </div>
 
         <button className="elp-button" onClick={handleOpenMobileMoney}>
-          Payer sans frais via Mobile Money
+          Payer par Mobile Money (WhatsApp)
         </button>
 
-        <p className="elp-helper">
-          Paiement sécurisé. Aucun frais supplémentaire.
-        </p>
+        <p className="elp-helper">Paiement via WhatsApp (MVP). Évolution paiement API plus tard.</p>
 
         <button className="elp-link-button" onClick={() => setStep("result")}>
           Retour à ma photo
@@ -310,10 +455,10 @@ function App() {
     <div className="elp-screen">
       {renderHeader()}
       <div className="elp-content elp-centered">
-        <h2 className="elp-title-small">Merci ! 🎉</h2>
+        <h2 className="elp-title-small">C’est bon 🎉</h2>
         <p className="elp-subtitle">
-          Ton abonnement EasyLook Pro est activé, ou ta photo a bien été
-          téléchargée.
+          Ton téléchargement est prêt. Il te reste <strong>{credits}</strong> crédit
+          {credits === 1 ? "" : "s"} gratuit{credits === 1 ? "" : "s"}.
         </p>
         <button className="elp-button" onClick={resetForNewPhoto}>
           Créer une nouvelle photo
@@ -351,5 +496,3 @@ function App() {
 }
 
 export default App;
-
-
