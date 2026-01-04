@@ -28,6 +28,20 @@ function json(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// petit helper: Vercel peut parfois donner req.body en string
+function safeParseBody(body) {
+  if (!body) return {};
+  if (typeof body === "object") return body;
+  if (typeof body === "string") {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 async function removeBgPngBufferFromBase64(imageBase64) {
   const apiKey = process.env.REMOVE_BG_API_KEY;
   if (!apiKey) {
@@ -39,7 +53,6 @@ async function removeBgPngBufferFromBase64(imageBase64) {
   const form = new FormData();
   form.append("image_file_b64", cleaned);
   form.append("size", "auto"); // remove.bg optimise selon l'image
-  // form.append("format", "png"); // pas nécessaire, PNG par défaut
 
   const resp = await fetch("https://api.remove.bg/v1.0/removebg", {
     method: "POST",
@@ -56,11 +69,7 @@ async function removeBgPngBufferFromBase64(imageBase64) {
   return Buffer.from(arr); // PNG cutout (transparence)
 }
 
-async function buildComposite({
-  cutoutPngBuffer,
-  backgroundId,
-  formatId,
-}) {
+async function buildComposite({ cutoutPngBuffer, backgroundId, formatId }) {
   const bgFile = BG_MAP[backgroundId] || BG_MAP["studio-white"];
   const fmt = FORMAT_MAP[formatId] || FORMAT_MAP.square;
 
@@ -83,7 +92,6 @@ async function buildComposite({
   const composed = bg.composite([{ input: cutoutResized, gravity: "center" }]);
 
   // 4) Finalisation: léger boost + netteté + compression propre
-  // - WhatsApp: compression un peu plus forte
   const jpegQuality = formatId === "whatsapp" ? 78 : 86;
 
   const finalJpeg = await composed
@@ -99,17 +107,36 @@ async function buildComposite({
 }
 
 export default async function handler(req, res) {
+  // ✅ LOG #1 — tout au début (première ligne dans handler)
+  console.log("[process-image] HIT", {
+    method: req.method,
+    url: req.url,
+    hasKey: Boolean(process.env.REMOVE_BG_API_KEY),
+  });
+
   try {
     if (req.method === "GET") {
-      // pratique pour vérifier que l'endpoint existe
-      return json(res, 200, { ok: true, hint: "Use POST with JSON { imageBase64, backgroundId, formatId }" });
+      return json(res, 200, {
+        ok: true,
+        hint: "Use POST with JSON { imageBase64, backgroundId, formatId }",
+      });
     }
 
     if (req.method !== "POST") {
       return json(res, 405, { error: "Method not allowed" });
     }
 
-    const { imageBase64, backgroundId, formatId } = req.body || {};
+    const body = safeParseBody(req.body);
+    const { imageBase64, backgroundId, formatId } = body || {};
+
+    // ✅ LOG #2 — juste après avoir lu le body
+    console.log("[process-image] BODY", {
+      hasImageBase64: Boolean(imageBase64),
+      imageLen: imageBase64 ? imageBase64.length : 0,
+      backgroundId,
+      formatId,
+    });
+
     if (!imageBase64) {
       return json(res, 400, { error: "Missing imageBase64" });
     }
