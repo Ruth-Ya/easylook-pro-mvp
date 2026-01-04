@@ -68,7 +68,6 @@ async function callProcessApi({ imageBase64, backgroundId, formatId }) {
     backgroundId,
     formatId,
   });
-
   const resp = await fetch("/api/process-image", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
