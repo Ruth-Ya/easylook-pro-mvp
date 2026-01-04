@@ -63,11 +63,31 @@ function fileToDataUrl(file) {
 }
 
 async function callProcessApi({ imageBase64, backgroundId, formatId }) {
+  console.log("➡️ callProcessApi déclenchée", {
+    hasImage: !!imageBase64,
+    backgroundId,
+    formatId,
+  });
+
   const resp = await fetch("/api/process-image", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64, backgroundId, formatId }),
+    body: JSON.stringify({
+      imageBase64,
+      backgroundId,
+      formatId,
+    }),
   });
+
+  console.log("⬅️ Réponse API reçue, status =", resp.status);
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(err);
+  }
+
+  return resp.json();
+}
 
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok || !data?.ok) {
