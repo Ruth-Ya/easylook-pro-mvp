@@ -1,7 +1,7 @@
 // src/App.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import logo from "./easylook-logo.png"; // logo placé dans src/
+import logo from "./easylook-logo.png";
 
 const STORAGE_KEY_CREDITS = "elp_credits_v1";
 const FREE_CREDITS_START = 3;
@@ -12,13 +12,18 @@ const SEGMENTS = [
   { id: "ecommerce", label: "E-commerce & Catalogues", desc: "Produits variés, marketplace, ventes…" },
 ];
 
-// (Pour l’instant: labels UI. Le fond IA viendra après remove.bg)
+// ✅ 10 fonds — IDs alignés avec BG_MAP du backend
 const BACKGROUNDS = [
-  { id: "studio-white", label: "Fond studio blanc" },
-  { id: "neutral-grey", label: "Fond neutre gris" },
-  { id: "textile-soft", label: "Fond textile soft" },
-  { id: "terracotta", label: "Fond terracotta" },
-  { id: "deep-green", label: "Fond vert profond" },
+  { id: "studio-white", label: "Studio blanc" },
+  { id: "neutral-grey", label: "Neutre gris" },
+  { id: "warm-ivory", label: "Ivoire chaud" },
+  { id: "sand-beige", label: "Sable beige" },
+  { id: "textile-soft", label: "Textile soft" },
+  { id: "olive-soft", label: "Olive soft" },
+  { id: "terracotta", label: "Terracotta" },
+  { id: "clay-light", label: "Argile claire" },
+  { id: "deep-green", label: "Vert profond" },
+  { id: "charcoal", label: "Charbon" },
 ];
 
 const FORMATS = [
@@ -48,22 +53,49 @@ function writeCreditsToStorage(n) {
   }
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Lecture du fichier impossible."));
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function callProcessApi({ imageBase64, backgroundId, formatId }) {
+  const resp = await fetch("/api/process-image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64, backgroundId, formatId }),
+  });
+
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.ok) {
+    const detail = data?.detail || data?.error || `HTTP ${resp.status}`;
+    throw new Error(detail);
+  }
+  return data; // { ok, imageDataUrl, width, height, ... }
+}
+
 function App() {
   const [step, setStep] = useState("home"); // home | processing | result | export | paywall | confirmation
   const [segment, setSegment] = useState("mode");
   const [credits, setCredits] = useState(FREE_CREDITS_START);
 
-  const [originalImage, setOriginalImage] = useState(null);
-  const [processedImage, setProcessedImage] = useState(null);
+  const [originalImage, setOriginalImage] = useState(null); // dataUrl (source)
+  const [processedImage, setProcessedImage] = useState(null); // dataUrl (final)
 
   const [selectedBackground, setSelectedBackground] = useState("studio-white");
   const [selectedFormat, setSelectedFormat] = useState("square");
 
+  const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Pour éviter les courses (si on change de fond vite)
+  const requestSeq = useRef(0);
 
   const fileInputRef = useRef(null);
 
-  // Init credits
   useEffect(() => {
     const stored = readCreditsFromStorage();
     if (stored === null) {
@@ -78,46 +110,46 @@ function App() {
     return SEGMENTS.find((s) => s.id === segment)?.label ?? "Mode & Artisanat";
   }, [segment]);
 
-  // --- IA réelle (remove.bg) ---
-  const processWithIA = async (file) => {
+  const consumeOneCredit = () => {
+    const next = Math.max(0, (credits ?? 0) - 1);
+    setCredits(next);
+    writeCreditsToStorage(next);
+  };
+
+  const startProcessingFromOriginal = async (opts = {}) => {
+    const { backgroundId = selectedBackground, formatId = selectedFormat } = opts;
+
+    if (!originalImage) return;
+
     setErrorMsg("");
+    setIsProcessing(true);
     setStep("processing");
 
-    // Preview original
-    const previewUrl = URL.createObjectURL(file);
-    setOriginalImage(previewUrl);
+    const mySeq = ++requestSeq.current;
 
-    // Call our backend API (Vercel serverless)
     try {
-      const fd = new FormData();
-      fd.append("image", file); // IMPORTANT: champ attendu par l’API
-      fd.append("segment", segment);
-      fd.append("background", selectedBackground);
-      fd.append("format", selectedFormat);
-
-      const resp = await fetch("/api/process-image", {
-        method: "POST",
-        body: fd,
+      const data = await callProcessApi({
+        imageBase64: originalImage,
+        backgroundId,
+        formatId,
       });
 
-      if (!resp.ok) {
-        const txt = await resp.text().catch(() => "");
-        throw new Error(txt || `HTTP ${resp.status}`);
-      }
+      // Si une nouvelle requête est partie après, on ignore celle-ci
+      if (mySeq !== requestSeq.current) return;
 
-      const blob = await resp.blob();
-      const outUrl = URL.createObjectURL(blob);
-
-      setProcessedImage(outUrl);
+      setProcessedImage(data.imageDataUrl);
       setStep("result");
     } catch (e) {
-      console.error(e);
+      if (mySeq !== requestSeq.current) return;
+
       setProcessedImage(null);
       setStep("home");
       setErrorMsg(
-        "Oups… le traitement IA a échoué. Vérifie la clé remove.bg dans Vercel et les logs.\n" +
-          "Astuce : Vercel → Deployments → Logs → cherche “remove.bg”."
+        "Oups… le traitement IA a échoué. Vérifie la clé remove.bg dans Vercel et les logs.\n\n" +
+          "Astuce : Vercel → Deployments → Logs → cherche “remove.bg” ou “process-image error”."
       );
+    } finally {
+      if (mySeq === requestSeq.current) setIsProcessing(false);
     }
   };
 
@@ -128,7 +160,7 @@ function App() {
     }
   };
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -138,7 +170,55 @@ function App() {
       return;
     }
 
-    processWithIA(file);
+    // On garde un aperçu "Avant" via URL.createObjectURL pour performance
+    const previewUrl = URL.createObjectURL(file);
+
+    setErrorMsg("");
+    setOriginalImage(null);
+    setProcessedImage(null);
+
+    // ⚠️ On met l'Avant en preview (URL) tout de suite
+    // mais pour l'API, on a besoin d'un dataURL base64.
+    // Donc on stocke le base64 dans originalImage et on garde aussi le preview pour l'affichage.
+    setStep("processing");
+    setIsProcessing(true);
+
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setOriginalImage(dataUrl); // base64 pour l’API
+
+      // pour l’affichage Avant, on utilise previewUrl (plus léger)
+      // mais on remplace via une variable dédiée:
+      // ici on garde processedImage null, et on stocke previewUrl séparément.
+      // => On utilise originalPreview ci-dessous.
+      setOriginalPreview(previewUrl);
+
+      // Lance le traitement IA
+      await startProcessingFromOriginal({ backgroundId: selectedBackground, formatId: selectedFormat });
+    } catch (err) {
+      setStep("home");
+      setErrorMsg("Impossible de lire l’image. Réessaie avec une autre photo.");
+      setIsProcessing(false);
+    }
+  };
+
+  // Avant (affichage)
+  const [originalPreview, setOriginalPreview] = useState(null);
+
+  const handleBackgroundChange = async (bgId) => {
+    setSelectedBackground(bgId);
+    if (!originalImage) return;
+
+    // re-génération instant dès qu'on change de fond
+    await startProcessingFromOriginal({ backgroundId: bgId, formatId: selectedFormat });
+  };
+
+  const handleFormatChange = async (formatId) => {
+    setSelectedFormat(formatId);
+    if (!originalImage) return;
+
+    // re-génération si une photo existe (pour preview au bon format)
+    await startProcessingFromOriginal({ backgroundId: selectedBackground, formatId });
   };
 
   const handleDownloadClick = () => {
@@ -149,18 +229,12 @@ function App() {
     setStep("paywall");
   };
 
-  const consumeOneCredit = () => {
-    const next = Math.max(0, (credits ?? 0) - 1);
-    setCredits(next);
-    writeCreditsToStorage(next);
-  };
-
   const actuallyDownloadImage = () => {
     if (!processedImage) return;
 
     const link = document.createElement("a");
     link.href = processedImage;
-    link.download = `easylook-pro-${selectedFormat}.png`;
+    link.download = `easylook-pro-${selectedFormat}.jpg`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -169,36 +243,35 @@ function App() {
     setStep("confirmation");
   };
 
-  const handleBackgroundChange = (bgId) => {
-    setSelectedBackground(bgId);
-    // (Étape suivante : régénérer fond via inpainting)
-  };
-
-  const handleFormatChange = (formatId) => {
-    setSelectedFormat(formatId);
-    // (Étape suivante : redimensionnement réel)
-  };
-
   const handleOpenMobileMoney = () => {
     const phone = "221707546281";
     const message = encodeURIComponent(
       `Bonjour ! Je souhaite activer EasyLook Pro (2 500 XOF / mois).\n` +
         `Segment : ${segmentLabel}\n` +
-        `Crédits restants : ${credits}\n` +
         `Merci de m’indiquer la procédure Mobile Money.\n` +
         `Mon numéro est : `
     );
-    window.open(`https://wa.me/${phone}?text=${message}`, "_blank");
+    const url = `https://wa.me/${phone}?text=${message}`;
+    window.open(url, "_blank");
   };
 
   const resetForNewPhoto = () => {
-    setErrorMsg("");
+    // annule les requêtes en cours
+    requestSeq.current += 1;
+
     setOriginalImage(null);
+    setOriginalPreview(null);
     setProcessedImage(null);
+
     setSelectedBackground("studio-white");
     setSelectedFormat("square");
+
+    setErrorMsg("");
+    setIsProcessing(false);
     setStep("home");
   };
+
+  // --- UI helpers ---
 
   const renderHeader = () => (
     <header className="elp-header">
@@ -246,14 +319,7 @@ function App() {
               cursor: "pointer",
             }}
           >
-            <input
-              type="radio"
-              name="segment"
-              value={s.id}
-              checked={segment === s.id}
-              onChange={() => setSegment(s.id)}
-              style={{ marginTop: 3 }}
-            />
+            <input type="radio" name="segment" value={s.id} checked={segment === s.id} onChange={() => setSegment(s.id)} style={{ marginTop: 3 }} />
             <div>
               <div style={{ fontWeight: 700 }}>{s.label}</div>
               <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{s.desc}</div>
@@ -269,19 +335,22 @@ function App() {
     return (
       <div
         style={{
-          border: "1px solid rgba(227,108,74,0.35)",
-          background: "rgba(227,108,74,0.08)",
+          marginTop: 12,
           padding: 14,
-          borderRadius: 14,
-          color: "#7a2e1e",
+          borderRadius: 12,
+          border: "1px solid rgba(220, 38, 38, 0.25)",
+          background: "rgba(220, 38, 38, 0.06)",
+          color: "#7f1d1d",
           whiteSpace: "pre-line",
           textAlign: "left",
         }}
       >
-        {errorMsg}
+        <strong>Erreur :</strong> {errorMsg}
       </div>
     );
   };
+
+  // --- Screens ---
 
   const renderHome = () => (
     <div className="elp-screen">
@@ -291,16 +360,16 @@ function App() {
 
         <h1 className="elp-title">Tes photos, version studio.</h1>
         <p className="elp-subtitle">
-          Transforme tes photos produits en visuels qualité studio, en moins de 60 secondes. Idéal pour WhatsApp, Instagram,
-          e-commerce et tous tes réseaux.
+          Transforme tes photos produits en visuels qualité studio, en moins de 60 secondes. Idéal pour WhatsApp, Instagram, e-commerce et tous tes réseaux.
         </p>
 
         {renderSegmentPicker()}
+
         {renderErrorBox()}
 
         <div className="elp-card elp-card-centered">
-          <button className="elp-button" onClick={handleUploadClick}>
-            Améliorer ma photo
+          <button className="elp-button" onClick={handleUploadClick} disabled={isProcessing}>
+            {isProcessing ? "Traitement en cours…" : "Améliorer ma photo"}
           </button>
           <p className="elp-helper">
             {credits > 0
@@ -336,10 +405,10 @@ function App() {
         <h2 className="elp-title-small">Ta photo, en version pro.</h2>
 
         <div className="elp-compare">
-          {originalImage && (
+          {originalPreview && (
             <div className="elp-image-block">
               <span className="elp-tag">Avant</span>
-              <img src={originalImage} alt="Avant" className="elp-image" />
+              <img src={originalPreview} alt="Avant" className="elp-image" />
             </div>
           )}
           {processedImage && (
@@ -360,6 +429,8 @@ function App() {
               key={bg.id}
               className={`elp-chip ${selectedBackground === bg.id ? "elp-chip-active" : ""}`}
               onClick={() => handleBackgroundChange(bg.id)}
+              disabled={isProcessing}
+              title={isProcessing ? "Traitement en cours…" : ""}
             >
               {bg.label}
             </button>
@@ -367,13 +438,19 @@ function App() {
         </div>
 
         <div className="elp-card elp-card-actions">
-          <button className="elp-button" onClick={handleDownloadClick}>
+          <button className="elp-button" onClick={handleDownloadClick} disabled={isProcessing || !processedImage}>
             {credits > 0 ? "Télécharger (1 crédit)" : "Activer EasyLook Pro"}
           </button>
 
-          <p className="elp-helper">{credits > 0 ? "Le téléchargement consomme 1 crédit." : "Crédits épuisés : passe en illimité."}</p>
+          <p className="elp-helper">
+            {isProcessing
+              ? "Traitement en cours…"
+              : credits > 0
+              ? "Le téléchargement consomme 1 crédit."
+              : "Crédits épuisés : passe en illimité."}
+          </p>
 
-          <button className="elp-link-button" onClick={resetForNewPhoto}>
+          <button className="elp-link-button" onClick={resetForNewPhoto} disabled={isProcessing}>
             Reprendre une nouvelle photo
           </button>
         </div>
@@ -388,6 +465,7 @@ function App() {
         {renderCreditsPill()}
 
         <h2 className="elp-title-small">Choisis ton format d’export</h2>
+
         <div className="elp-card">
           {FORMATS.map((f) => (
             <label key={f.id} className="elp-radio-row">
@@ -397,6 +475,7 @@ function App() {
                 value={f.id}
                 checked={selectedFormat === f.id}
                 onChange={() => handleFormatChange(f.id)}
+                disabled={isProcessing}
               />
               <span>{f.label}</span>
             </label>
@@ -412,13 +491,20 @@ function App() {
             }
             actuallyDownloadImage();
           }}
+          disabled={isProcessing || !processedImage}
         >
           Télécharger (1 crédit)
         </button>
 
-        <button className="elp-link-button" onClick={() => setStep("result")}>
+        <button className="elp-link-button" onClick={() => setStep("result")} disabled={isProcessing}>
           Retour
         </button>
+
+        {isProcessing && (
+          <p className="elp-helper" style={{ marginTop: 10 }}>
+            Re-génération en cours pour appliquer le format…
+          </p>
+        )}
       </div>
     </div>
   );
@@ -435,9 +521,9 @@ function App() {
 
         <div className="elp-card">
           <ul className="elp-list">
-            <li>Détourage automatique (remove.bg)</li>
+            <li>Détourage automatique</li>
             <li>10 fonds studio optimisés mode & artisanat</li>
-            <li>Export multi-formats</li>
+            <li>Export multi-formats (WhatsApp, e-commerce, réseaux)</li>
             <li>Résultats en moins de 60 secondes</li>
             <li>Payer sans frais via Mobile Money (WhatsApp)</li>
           </ul>
@@ -462,8 +548,7 @@ function App() {
       <div className="elp-content elp-centered">
         <h2 className="elp-title-small">C’est bon 🎉</h2>
         <p className="elp-subtitle">
-          Ton téléchargement est prêt. Il te reste <strong>{credits}</strong> crédit{credits === 1 ? "" : "s"} gratuit
-          {credits === 1 ? "" : "s"}.
+          Ton téléchargement est prêt. Il te reste <strong>{credits}</strong> crédit{credits === 1 ? "" : "s"} gratuit{credits === 1 ? "" : "s"}.
         </p>
         <button className="elp-button" onClick={resetForNewPhoto}>
           Créer une nouvelle photo
