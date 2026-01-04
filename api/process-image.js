@@ -1,134 +1,144 @@
-import Busboy from "busboy";
+// api/process-image.js
+import path from "path";
+import sharp from "sharp";
 
-/**
- * POST /api/process-image
- * Attendu: multipart/form-data avec champ fichier "image"
- * Retour: image/png (fond transparent) issu de remove.bg
- */
-export default async function handler(req, res) {
-  try {
-    if (req.method !== "POST") {
-      res.statusCode = 405;
-      res.setHeader("Content-Type", "application/json");
-      return res.end(JSON.stringify({ error: "Method not allowed" }));
-    }
+const BG_MAP = {
+  "studio-white": "studio-white.jpg",
+  "neutral-grey": "neutral-grey.jpg",
+  "textile-soft": "textile-soft.jpg",
+  "terracotta": "terracotta.jpg",
+  "deep-green": "deep-green.jpg",
+  "warm-ivory": "warm-ivory.jpg",
+  "sand-beige": "sand-beige.jpg",
+  "olive-soft": "olive-soft.jpg",
+  "clay-light": "clay-light.jpg",
+  "charcoal": "charcoal.jpg",
+};
 
-    const apiKey = process.env.REMOVE_BG_API_KEY;
-    if (!apiKey) {
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json");
-      return res.end(
-        JSON.stringify({
-          error: "Missing REMOVE_BG_API_KEY in environment variables",
-        })
-      );
-    }
+const FORMAT_MAP = {
+  square: { w: 1080, h: 1080 },
+  portrait: { w: 1080, h: 1350 },
+  landscape: { w: 1200, h: 628 },
+  whatsapp: { w: 1080, h: 1080 }, // léger: on compresse plus fort (voir plus bas)
+};
 
-    // --- Parse multipart/form-data (image file) ---
-    const { fileBuffer, fileName, mimeType, fields } = await parseMultipart(req);
-
-    if (!fileBuffer || fileBuffer.length === 0) {
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json");
-      return res.end(JSON.stringify({ error: "No image file received" }));
-    }
-
-    // --- Call remove.bg using binary file ---
-    const formData = new FormData();
-
-    // Convert Buffer -> Blob (Node 18+ supports Blob/FormData)
-    const blob = new Blob([fileBuffer], { type: mimeType || "image/png" });
-
-    // IMPORTANT: remove.bg works best with "image_file" (binary), not image_file_b64
-    formData.append("image_file", blob, fileName || "image.png");
-    formData.append("size", "auto");
-    formData.append("format", "png"); // transparent output
-
-    // Optionnel (utile pour produits)
-    // formData.append("type", "product");
-
-    // Si tu veux passer des infos du front (non utilisé pour remove.bg ici)
-    // ex: fields.segment, fields.background, fields.format
-
-    const rbRes = await fetch("https://api.remove.bg/v1.0/removebg", {
-      method: "POST",
-      headers: { "X-Api-Key": apiKey },
-      body: formData,
-    });
-
-    if (!rbRes.ok) {
-      const text = await rbRes.text().catch(() => "");
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json");
-      return res.end(
-        JSON.stringify({
-          error: "remove.bg request failed",
-          status: rbRes.status,
-          details: text?.slice(0, 1200) || "No details",
-        })
-      );
-    }
-
-    const arrayBuffer = await rbRes.arrayBuffer();
-    const out = Buffer.from(arrayBuffer);
-
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "image/png");
-    // Cache off for MVP
-    res.setHeader("Cache-Control", "no-store");
-    return res.end(out);
-  } catch (err) {
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "application/json");
-    return res.end(
-      JSON.stringify({
-        error: "Server error",
-        message: err?.message || String(err),
-      })
-    );
-  }
+function json(res, status, obj) {
+  res.statusCode = status;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(obj));
 }
 
-function parseMultipart(req) {
-  return new Promise((resolve, reject) => {
-    const bb = Busboy({
-      headers: req.headers,
-      limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB
-        files: 1,
-      },
-    });
+async function removeBgPngBufferFromBase64(imageBase64) {
+  const apiKey = process.env.REMOVE_BG_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing env REMOVE_BG_API_KEY");
+  }
 
-    const fields = {};
-    let fileBuffer = null;
-    let fileName = "";
-    let mimeType = "";
+  const cleaned = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
-    bb.on("field", (name, val) => {
-      fields[name] = val;
-    });
+  const form = new FormData();
+  form.append("image_file_b64", cleaned);
+  form.append("size", "auto"); // remove.bg optimise selon l'image
+  // form.append("format", "png"); // pas nécessaire, PNG par défaut
 
-    bb.on("file", (name, file, info) => {
-      // On s’attend à un champ "image" côté front
-      const { filename, mimeType: mt } = info || {};
-      fileName = filename || "";
-      mimeType = mt || "";
-
-      const chunks = [];
-      file.on("data", (data) => chunks.push(data));
-      file.on("limit", () => {
-        reject(new Error("File too large (limit 10MB)"));
-      });
-      file.on("end", () => {
-        fileBuffer = Buffer.concat(chunks);
-      });
-    });
-
-    bb.on("error", reject);
-    bb.on("finish", () => {
-      resolve({ fileBuffer, fileName, mimeType, fields });
-    });
-
-    req.pipe(bb);
+  const resp = await fetch("https://api.remove.bg/v1.0/removebg", {
+    method: "POST",
+    headers: { "X-Api-Key": apiKey },
+    body: form,
   });
+
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`remove.bg failed: ${resp.status} ${txt}`);
+  }
+
+  const arr = await resp.arrayBuffer();
+  return Buffer.from(arr); // PNG cutout (transparence)
+}
+
+async function buildComposite({
+  cutoutPngBuffer,
+  backgroundId,
+  formatId,
+}) {
+  const bgFile = BG_MAP[backgroundId] || BG_MAP["studio-white"];
+  const fmt = FORMAT_MAP[formatId] || FORMAT_MAP.square;
+
+  const bgPath = path.join(process.cwd(), "public", "backgrounds", bgFile);
+
+  // 1) Canvas (fond) au bon format
+  const bg = sharp(bgPath)
+    .resize(fmt.w, fmt.h, { fit: "cover" })
+    .toColourspace("srgb");
+
+  // 2) Redimensionnement du cutout pour qu’il rentre bien dans le canvas
+  const maxW = Math.round(fmt.w * 0.82);
+  const maxH = Math.round(fmt.h * 0.82);
+
+  const cutoutResized = await sharp(cutoutPngBuffer)
+    .resize(maxW, maxH, { fit: "inside", withoutEnlargement: true })
+    .toBuffer();
+
+  // 3) Compositing (centre)
+  const composed = bg.composite([{ input: cutoutResized, gravity: "center" }]);
+
+  // 4) Finalisation: léger boost + netteté + compression propre
+  // - WhatsApp: compression un peu plus forte
+  const jpegQuality = formatId === "whatsapp" ? 78 : 86;
+
+  const finalJpeg = await composed
+    .modulate({
+      brightness: 1.04,
+      saturation: 1.06,
+    })
+    .sharpen({ sigma: 0.9, m1: 0.5, m2: 1.0 })
+    .jpeg({ quality: jpegQuality, mozjpeg: true })
+    .toBuffer();
+
+  return { buffer: finalJpeg, width: fmt.w, height: fmt.h };
+}
+
+export default async function handler(req, res) {
+  try {
+    if (req.method === "GET") {
+      // pratique pour vérifier que l'endpoint existe
+      return json(res, 200, { ok: true, hint: "Use POST with JSON { imageBase64, backgroundId, formatId }" });
+    }
+
+    if (req.method !== "POST") {
+      return json(res, 405, { error: "Method not allowed" });
+    }
+
+    const { imageBase64, backgroundId, formatId } = req.body || {};
+    if (!imageBase64) {
+      return json(res, 400, { error: "Missing imageBase64" });
+    }
+
+    // Étape 1 : détourage remove.bg (PNG transparent)
+    const cutout = await removeBgPngBufferFromBase64(imageBase64);
+
+    // Étape 2/3/4 : fond + resize + finalisation
+    const out = await buildComposite({
+      cutoutPngBuffer: cutout,
+      backgroundId: backgroundId || "studio-white",
+      formatId: formatId || "square",
+    });
+
+    const dataUrl = `data:image/jpeg;base64,${out.buffer.toString("base64")}`;
+
+    return json(res, 200, {
+      ok: true,
+      formatId: formatId || "square",
+      backgroundId: backgroundId || "studio-white",
+      width: out.width,
+      height: out.height,
+      imageDataUrl: dataUrl,
+    });
+  } catch (e) {
+    console.error("process-image error:", e);
+    return json(res, 500, {
+      error: "Processing failed",
+      detail: String(e?.message || e),
+    });
+  }
 }
