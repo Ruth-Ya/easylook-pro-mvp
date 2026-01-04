@@ -7,23 +7,12 @@ const STORAGE_KEY_CREDITS = "elp_credits_v1";
 const FREE_CREDITS_START = 3;
 
 const SEGMENTS = [
-  {
-    id: "mode",
-    label: "Mode & Artisanat",
-    desc: "Bazin, wax, accessoires, bijoux…",
-  },
-  {
-    id: "agro",
-    label: "Agro & Produits locaux",
-    desc: "Bissap, miel, huiles, épices…",
-  },
-  {
-    id: "ecommerce",
-    label: "E-commerce & Catalogues",
-    desc: "Produits variés, marketplace, ventes…",
-  },
+  { id: "mode", label: "Mode & Artisanat", desc: "Bazin, wax, accessoires, bijoux…" },
+  { id: "agro", label: "Agro & Produits locaux", desc: "Bissap, miel, huiles, épices…" },
+  { id: "ecommerce", label: "E-commerce & Catalogues", desc: "Produits variés, marketplace, ventes…" },
 ];
 
+// (Pour l’instant: labels UI. Le fond IA viendra après remove.bg)
 const BACKGROUNDS = [
   { id: "studio-white", label: "Fond studio blanc" },
   { id: "neutral-grey", label: "Fond neutre gris" },
@@ -53,10 +42,7 @@ function readCreditsFromStorage() {
 
 function writeCreditsToStorage(n) {
   try {
-    localStorage.setItem(
-      STORAGE_KEY_CREDITS,
-      String(Math.max(0, Math.floor(n)))
-    );
+    localStorage.setItem(STORAGE_KEY_CREDITS, String(Math.max(0, Math.floor(n))));
   } catch {
     // ignore
   }
@@ -67,24 +53,17 @@ function App() {
   const [segment, setSegment] = useState("mode");
   const [credits, setCredits] = useState(FREE_CREDITS_START);
 
-  const [originalImage, setOriginalImage] = useState(null); // objectURL
-  const [processedImage, setProcessedImage] = useState(null); // objectURL or dataURL
+  const [originalImage, setOriginalImage] = useState(null);
+  const [processedImage, setProcessedImage] = useState(null);
+
   const [selectedBackground, setSelectedBackground] = useState("studio-white");
   const [selectedFormat, setSelectedFormat] = useState("square");
 
-  // On garde le fichier brut en mémoire pour pouvoir "retraiter" quand on change le fond
-  const [originalFile, setOriginalFile] = useState(null);
-
-  // Pour afficher des erreurs utilisateur
   const [errorMsg, setErrorMsg] = useState("");
 
   const fileInputRef = useRef(null);
 
-  // Nettoyage des objectURL pour éviter les fuites mémoire
-  const originalUrlRef = useRef(null);
-  const processedUrlRef = useRef(null);
-
-  // Initialisation des crédits (3 au départ) + persistance
+  // Init credits
   useEffect(() => {
     const stored = readCreditsFromStorage();
     if (stored === null) {
@@ -95,120 +74,56 @@ function App() {
     }
   }, []);
 
-  // Helper segment
   const segmentLabel = useMemo(() => {
     return SEGMENTS.find((s) => s.id === segment)?.label ?? "Mode & Artisanat";
   }, [segment]);
 
-  const setOriginalPreview = (file) => {
-    // Revoke ancien URL si existant
-    if (originalUrlRef.current) {
-      URL.revokeObjectURL(originalUrlRef.current);
-      originalUrlRef.current = null;
-    }
-    const previewUrl = URL.createObjectURL(file);
-    originalUrlRef.current = previewUrl;
-    setOriginalImage(previewUrl);
-  };
-
-  const setProcessedPreviewFromBlob = (blob) => {
-    // Revoke ancien URL si existant
-    if (processedUrlRef.current) {
-      URL.revokeObjectURL(processedUrlRef.current);
-      processedUrlRef.current = null;
-    }
-    const url = URL.createObjectURL(blob);
-    processedUrlRef.current = url;
-    setProcessedImage(url);
-  };
-
-  // === VRAI APPEL API ===
-  // Attendu : POST /api/process-image
-  // - soit renvoie image/* (binaire)
-  // - soit JSON { imageBase64, mimeType } ou { imageUrl }
-  const callProcessApi = async (file) => {
+  // --- IA réelle (remove.bg) ---
+  const processWithIA = async (file) => {
     setErrorMsg("");
     setStep("processing");
 
-    // 1) Preview avant
-    setOriginalPreview(file);
+    // Preview original
+    const previewUrl = URL.createObjectURL(file);
+    setOriginalImage(previewUrl);
 
-    // 2) Build form data
-    const formData = new FormData();
-    formData.append("image", file);
-    formData.append("segment", segment);
-    formData.append("background", selectedBackground);
-    formData.append("format", selectedFormat);
-
+    // Call our backend API (Vercel serverless)
     try {
-      const res = await fetch("/api/process-image", {
+      const fd = new FormData();
+      fd.append("image", file); // IMPORTANT: champ attendu par l’API
+      fd.append("segment", segment);
+      fd.append("background", selectedBackground);
+      fd.append("format", selectedFormat);
+
+      const resp = await fetch("/api/process-image", {
         method: "POST",
-        body: formData,
+        body: fd,
       });
 
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(
-          `Erreur API (${res.status}) ${txt ? `- ${txt}` : ""}`.trim()
-        );
+      if (!resp.ok) {
+        const txt = await resp.text().catch(() => "");
+        throw new Error(txt || `HTTP ${resp.status}`);
       }
 
-      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      const blob = await resp.blob();
+      const outUrl = URL.createObjectURL(blob);
 
-      // Cas 1 : l’API renvoie directement une image
-      if (contentType.startsWith("image/")) {
-        const blob = await res.blob();
-        setProcessedPreviewFromBlob(blob);
-        setStep("result");
-        return;
-      }
-
-      // Cas 2 : l’API renvoie du JSON
-      if (contentType.includes("application/json")) {
-        const data = await res.json();
-
-        // a) { imageBase64, mimeType }
-        if (data?.imageBase64) {
-          const mime = data?.mimeType || "image/png";
-          const dataUrl = `data:${mime};base64,${data.imageBase64}`;
-          // (dataURL -> pas besoin de revoke)
-          setProcessedImage(dataUrl);
-          setStep("result");
-          return;
-        }
-
-        // b) { imageUrl } (url publique)
-        if (data?.imageUrl) {
-          setProcessedImage(data.imageUrl);
-          setStep("result");
-          return;
-        }
-
-        throw new Error("Réponse JSON inattendue (aucune image retournée).");
-      }
-
-      // Fallback : tenter blob
-      const blob = await res.blob();
-      if (blob && blob.size > 0) {
-        setProcessedPreviewFromBlob(blob);
-        setStep("result");
-        return;
-      }
-
-      throw new Error("Réponse API inattendue (vide).");
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(
-        "Oups… le traitement IA a échoué. Vérifie la clé remove.bg dans Vercel et les logs."
-      );
-      // On revient sur home (ou result) selon préférence. Ici : home.
+      setProcessedImage(outUrl);
+      setStep("result");
+    } catch (e) {
+      console.error(e);
+      setProcessedImage(null);
       setStep("home");
+      setErrorMsg(
+        "Oups… le traitement IA a échoué. Vérifie la clé remove.bg dans Vercel et les logs.\n" +
+          "Astuce : Vercel → Deployments → Logs → cherche “remove.bg”."
+      );
     }
   };
 
   const handleUploadClick = () => {
     if (fileInputRef.current) {
-      fileInputRef.current.value = null; // reset
+      fileInputRef.current.value = null;
       fileInputRef.current.click();
     }
   };
@@ -223,17 +138,14 @@ function App() {
       return;
     }
 
-    setOriginalFile(file);
-    callProcessApi(file);
+    processWithIA(file);
   };
 
   const handleDownloadClick = () => {
-    // Si crédits dispo => export
     if (credits > 0) {
       setStep("export");
       return;
     }
-    // Sinon paywall
     setStep("paywall");
   };
 
@@ -259,23 +171,16 @@ function App() {
 
   const handleBackgroundChange = (bgId) => {
     setSelectedBackground(bgId);
-
-    // Option MVP utile : si on a déjà une photo uploadée,
-    // on relance le traitement pour simuler "changer le fond"
-    // (ton backend pourra l’exploiter plus tard).
-    if (originalFile) {
-      callProcessApi(originalFile);
-    }
+    // (Étape suivante : régénérer fond via inpainting)
   };
 
   const handleFormatChange = (formatId) => {
     setSelectedFormat(formatId);
-    // Le "vrai redimensionnement" viendra après :
-    // soit dans l’API, soit dans le front via canvas.
+    // (Étape suivante : redimensionnement réel)
   };
 
   const handleOpenMobileMoney = () => {
-    const phone = "221707546281"; // Numéro EasyLook Pro (Sénégal)
+    const phone = "221707546281";
     const message = encodeURIComponent(
       `Bonjour ! Je souhaite activer EasyLook Pro (2 500 XOF / mois).\n` +
         `Segment : ${segmentLabel}\n` +
@@ -283,23 +188,11 @@ function App() {
         `Merci de m’indiquer la procédure Mobile Money.\n` +
         `Mon numéro est : `
     );
-    const url = `https://wa.me/${phone}?text=${message}`;
-    window.open(url, "_blank");
+    window.open(`https://wa.me/${phone}?text=${message}`, "_blank");
   };
 
   const resetForNewPhoto = () => {
     setErrorMsg("");
-    setOriginalFile(null);
-
-    if (originalUrlRef.current) {
-      URL.revokeObjectURL(originalUrlRef.current);
-      originalUrlRef.current = null;
-    }
-    if (processedUrlRef.current) {
-      URL.revokeObjectURL(processedUrlRef.current);
-      processedUrlRef.current = null;
-    }
-
     setOriginalImage(null);
     setProcessedImage(null);
     setSelectedBackground("studio-white");
@@ -307,31 +200,16 @@ function App() {
     setStep("home");
   };
 
-  // --- Vues ---
-
   const renderHeader = () => (
     <header className="elp-header">
       <div className="elp-hero-banner">
-        <img
-          src={logo}
-          alt="EasyLook Pro – Tes photos, version studio"
-          className="elp-hero-image"
-        />
+        <img src={logo} alt="EasyLook Pro – Tes photos, version studio" className="elp-hero-image" />
       </div>
     </header>
   );
 
   const renderCreditsPill = () => (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        justifyContent: "center",
-        fontSize: 12,
-        color: "#555",
-      }}
-    >
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center", fontSize: 12, color: "#555" }}>
       <span
         style={{
           display: "inline-flex",
@@ -345,9 +223,7 @@ function App() {
         }}
       >
         <span style={{ fontWeight: 700 }}>{credits}</span>
-        <span>
-          crédit{credits === 1 ? "" : "s"} gratuit{credits === 1 ? "" : "s"}
-        </span>
+        <span>crédit{credits === 1 ? "" : "s"} gratuit{credits === 1 ? "" : "s"}</span>
       </span>
     </div>
   );
@@ -365,10 +241,7 @@ function App() {
               alignItems: "flex-start",
               padding: "10px 10px",
               borderRadius: 12,
-              border:
-                segment === s.id
-                  ? "1px solid rgba(199,139,58,0.55)"
-                  : "1px solid rgba(0,0,0,0.08)",
+              border: segment === s.id ? "1px solid rgba(199,139,58,0.55)" : "1px solid rgba(0,0,0,0.08)",
               background: segment === s.id ? "rgba(199,139,58,0.08)" : "#fff",
               cursor: "pointer",
             }}
@@ -383,15 +256,32 @@ function App() {
             />
             <div>
               <div style={{ fontWeight: 700 }}>{s.label}</div>
-              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                {s.desc}
-              </div>
+              <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>{s.desc}</div>
             </div>
           </label>
         ))}
       </div>
     </div>
   );
+
+  const renderErrorBox = () => {
+    if (!errorMsg) return null;
+    return (
+      <div
+        style={{
+          border: "1px solid rgba(227,108,74,0.35)",
+          background: "rgba(227,108,74,0.08)",
+          padding: 14,
+          borderRadius: 14,
+          color: "#7a2e1e",
+          whiteSpace: "pre-line",
+          textAlign: "left",
+        }}
+      >
+        {errorMsg}
+      </div>
+    );
+  };
 
   const renderHome = () => (
     <div className="elp-screen">
@@ -401,30 +291,12 @@ function App() {
 
         <h1 className="elp-title">Tes photos, version studio.</h1>
         <p className="elp-subtitle">
-          Transforme tes photos produits en visuels qualité studio, en moins de 60
-          secondes. Idéal pour WhatsApp, Instagram, e-commerce et tous tes réseaux.
+          Transforme tes photos produits en visuels qualité studio, en moins de 60 secondes. Idéal pour WhatsApp, Instagram,
+          e-commerce et tous tes réseaux.
         </p>
 
         {renderSegmentPicker()}
-
-        {errorMsg ? (
-          <div
-            className="elp-card"
-            style={{
-              border: "1px solid rgba(227,108,74,0.35)",
-              background: "rgba(227,108,74,0.06)",
-              color: "#7a2f1e",
-              textAlign: "left",
-              fontSize: 13,
-              lineHeight: 1.5,
-            }}
-          >
-            <strong>Erreur :</strong> {errorMsg}
-            <div style={{ marginTop: 8, opacity: 0.9 }}>
-              Astuce : ouvre Vercel → Deployments → Logs → cherche “remove.bg”.
-            </div>
-          </div>
-        ) : null}
+        {renderErrorBox()}
 
         <div className="elp-card elp-card-centered">
           <button className="elp-button" onClick={handleUploadClick}>
@@ -432,9 +304,7 @@ function App() {
           </button>
           <p className="elp-helper">
             {credits > 0
-              ? `${credits} crédit${credits === 1 ? "" : "s"} gratuit${
-                  credits === 1 ? "" : "s"
-                } restant${credits === 1 ? "" : "s"}.`
+              ? `${credits} crédit${credits === 1 ? "" : "s"} gratuit${credits === 1 ? "" : "s"} restant${credits === 1 ? "" : "s"}.`
               : "Crédits épuisés : passe en illimité."}
           </p>
         </div>
@@ -442,13 +312,7 @@ function App() {
         <p className="elp-footer-note">Fonctionne sur tous les téléphones.</p>
       </div>
 
-      <input
-        type="file"
-        accept="image/*"
-        ref={fileInputRef}
-        style={{ display: "none" }}
-        onChange={handleFileChange}
-      />
+      <input type="file" accept="image/*" ref={fileInputRef} style={{ display: "none" }} onChange={handleFileChange} />
     </div>
   );
 
@@ -458,9 +322,7 @@ function App() {
       <div className="elp-content elp-centered">
         <div className="elp-loader" />
         <h2 className="elp-title-small">On prépare ta version studio…</h2>
-        <p className="elp-subtitle">
-          Ça prend moins de 60 secondes. Tu peux poser ton téléphone 😉
-        </p>
+        <p className="elp-subtitle">Ça prend moins de 60 secondes. Tu peux poser ton téléphone 😉</p>
       </div>
     </div>
   );
@@ -509,9 +371,7 @@ function App() {
             {credits > 0 ? "Télécharger (1 crédit)" : "Activer EasyLook Pro"}
           </button>
 
-          <p className="elp-helper">
-            {credits > 0 ? "Le téléchargement consomme 1 crédit." : "Crédits épuisés : passe en illimité."}
-          </p>
+          <p className="elp-helper">{credits > 0 ? "Le téléchargement consomme 1 crédit." : "Crédits épuisés : passe en illimité."}</p>
 
           <button className="elp-link-button" onClick={resetForNewPhoto}>
             Reprendre une nouvelle photo
@@ -569,15 +429,15 @@ function App() {
       <div className="elp-content">
         <h2 className="elp-title-small">Passe en mode studio illimité.</h2>
         <p className="elp-subtitle">
-          Tu as utilisé tes <strong>{FREE_CREDITS_START} crédits gratuits</strong>. Active EasyLook Pro
-          pour continuer, pour seulement <strong>2 500 XOF / mois</strong>.
+          Tu as utilisé tes <strong>{FREE_CREDITS_START} crédits gratuits</strong>. Active EasyLook Pro pour continuer, pour seulement{" "}
+          <strong>2 500 XOF / mois</strong>.
         </p>
 
         <div className="elp-card">
           <ul className="elp-list">
-            <li>Détourage automatique</li>
+            <li>Détourage automatique (remove.bg)</li>
             <li>10 fonds studio optimisés mode & artisanat</li>
-            <li>Export multi-formats (WhatsApp, e-commerce, réseaux)</li>
+            <li>Export multi-formats</li>
             <li>Résultats en moins de 60 secondes</li>
             <li>Payer sans frais via Mobile Money (WhatsApp)</li>
           </ul>
@@ -602,8 +462,8 @@ function App() {
       <div className="elp-content elp-centered">
         <h2 className="elp-title-small">C’est bon 🎉</h2>
         <p className="elp-subtitle">
-          Ton téléchargement est prêt. Il te reste <strong>{credits}</strong> crédit
-          {credits === 1 ? "" : "s"} gratuit{credits === 1 ? "" : "s"}.
+          Ton téléchargement est prêt. Il te reste <strong>{credits}</strong> crédit{credits === 1 ? "" : "s"} gratuit
+          {credits === 1 ? "" : "s"}.
         </p>
         <button className="elp-button" onClick={resetForNewPhoto}>
           Créer une nouvelle photo
@@ -612,7 +472,6 @@ function App() {
     </div>
   );
 
-  // Choix de l’écran
   let content;
   switch (step) {
     case "home":
